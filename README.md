@@ -12,9 +12,8 @@ A modern, high-end personal portfolio for Smit Patel built with React, TypeScrip
 
 ## Live Demo
 
-- Portfolio Website: https://your-portfolio-domain.com
-- GitHub: https://github.com/yourusername/your-portfolio-repo
-
+- Portfolio Website: https://portfolio-ya16.onrender.com/
+- GitHub: https://github.com/smitpatel7202/PORTFOLIO
 ## Overview
 
 This portfolio is designed for:
