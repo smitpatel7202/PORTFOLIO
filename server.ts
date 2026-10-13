@@ -3,15 +3,21 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { getPortfolioFallbackReply, RESUME_CONTEXT } from "./src/utils/portfolioAssistant";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-flash-latest",
+  "gemini-1.5-flash",
+];
 
 app.use(express.json());
 
-// Initialize Gemini AI client lazily/safely
 const getGeminiClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -19,118 +25,119 @@ const getGeminiClient = () => {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build",
+        "User-Agent": "smit-patel-portfolio",
       },
     },
   });
 };
 
-const RESUME_CONTEXT = `
-You are the interactive AI Portfolio Assistant for Smit Patel. You respond on behalf of Smit Patel, a Full Stack MERN & AI Developer based in Ahmedabad, Gujarat, India.
+type ChatTurn = { sender?: string; role?: string; text?: string; content?: string };
 
-Smit Patel Profile:
-- Role: Full Stack Web Developer (MERN Stack) & B.Tech IT Student (Silver Oak University, 2022-2026, CGPA: 8.14 / 10).
-- Location: Ahmedabad, Gujarat, India
-- Email: sp7202037271@gmail.com
-- Phone: +91 72020 37271
-- LinkedIn: https://linkedin.com/in/patelsmit09
-- GitHub: https://github.com/smitpatel7202
+function extractReplyText(response: any): string {
+  if (!response) return "";
+  if (typeof response.text === "string" && response.text.trim()) return response.text.trim();
+  if (typeof response.text === "function") {
+    const value = response.text();
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const parts = response.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const text = parts.map((part: any) => part?.text || "").join("").trim();
+    if (text) return text;
+  }
+  return "";
+}
 
-Core Technical Competencies:
-- Frontend: React.js, Next.js 14, TypeScript, JavaScript (ES6+), Tailwind CSS, Framer Motion, HTML5, CSS3.
-- Backend: Node.js, Express.js, RESTful API Design, JWT Authentication, RBAC, Server-Side Development.
-- Databases & ORM: MongoDB, PostgreSQL, Prisma ORM, Database Design.
-- AI & Integrations: Gemini AI API (auto-summarization, semantic search, prompt engineering), OpenWeather API, Google Maps API, Cloudinary.
-- Tools: Git, GitHub, Netlify, Render, Vercel, Figma, VS Code.
+function buildContents(message: string, history: ChatTurn[] = []) {
+  const turns = Array.isArray(history) ? history.slice(-8) : [];
+  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
+    {
+      role: "user",
+      parts: [
+        {
+          text: `${RESUME_CONTEXT}\n\nFollow the profile facts above. Answer only the next visitor questions with specific, non-generic replies.`,
+        },
+      ],
+    },
+    {
+      role: "model",
+      parts: [
+        {
+          text: "Understood. I am Smit Patel's portfolio assistant. I will answer with specific facts, and I will describe Smit as a B.Tech IT graduate who completed the degree in 2026.",
+        },
+      ],
+    },
+  ];
 
-Featured Projects:
-1. Peblo AI Notes Workspace (React, Express, Prisma, PostgreSQL, Gemini AI API, JWT, Tailwind)
-   - AI-powered notes app with auto-summarization, semantic search, markdown rendering, tag management, dark mode, and public sharing dashboard.
-2. Full Stack Job Portal (MongoDB, Express, React, Node.js, JWT, Cloudinary, Tailwind)
-   - Role-based access control (Admin, Employer, Job Seeker), applicant tracking system, Cloudinary resume uploads, live deployed on Netlify & Render.
-3. AcademyPro – E-Learning Landing Page (Next.js 14, TypeScript, Tailwind CSS, Framer Motion)
-   - High-converting e-learning platform with fluid scroll animations, Next.js static generation, and high Core Web Vitals performance.
-4. ShopVault – Auth-Based E-Commerce Dashboard (React, Context API, JWT Auth, Tailwind CSS)
-   - Protected routes, session-persistent JWT auth, real-time shopping cart via Context API, dynamic product filtering.
-5. Sharda Steel – Business Website (Live Production)
-   - Mobile-first responsive business site, Google Maps API, WhatsApp inquiry lead generation form, driving real client leads.
+  for (const turn of turns) {
+    const text = (turn.text || turn.content || "").trim();
+    if (!text) continue;
+    const sender = (turn.sender || turn.role || "").toLowerCase();
+    contents.push({
+      role: sender === "ai" || sender === "model" || sender === "assistant" ? "model" : "user",
+      parts: [{ text }],
+    });
+  }
 
-Certifications:
-- AI Fundamentals (IBM SkillsBuild, 2025)
-- Data Analytics – Data into Decisions (CSRBOX × IBM SkillsBuild, 2025)
-- Data Analysis with Python (IBM SkillsBuild, 2024)
-- Web Scraping with Python (Great Learning Academy, 2024)
+  contents.push({
+    role: "user",
+    parts: [{ text: `Visitor question: ${message}\nGive a concise, direct, question-specific answer.` }],
+  });
 
-Tone & Style: Friendly, professional, tech-savvy, confident, concise, and helpful. Always encourage recruiters or clients to reach out via email or phone!
-`;
+  return contents;
+}
 
-// AI Assistant Chat Route
+async function generateGeminiReply(message: string, history: ChatTurn[]) {
+  const ai = getGeminiClient();
+  if (!ai) return null;
+
+  const contents = buildContents(message, history);
+  let lastError: unknown = null;
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+      });
+      const reply = extractReplyText(response);
+      if (reply) return reply;
+    } catch (error) {
+      lastError = error;
+      console.error(`Gemini model ${model} failed:`, error);
+    }
+  }
+
+  if (lastError) throw lastError;
+  return null;
+}
+
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history } = req.body || {};
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    const ai = getGeminiClient();
-
-    if (!ai) {
-      // Fallback response if API key is not yet set
-      const lower = message.toLowerCase();
-      let reply = "Hello! I am Smit Patel's AI Assistant. How can I help you today?";
-      if (lower.includes("skill") || lower.includes("tech") || lower.includes("stack")) {
-        reply = "Smit is proficient in the MERN Stack (MongoDB, Express.js, React.js, Node.js), Next.js 14, TypeScript, Tailwind CSS, PostgreSQL, Prisma ORM, and Google Gemini AI API integration!";
-      } else if (lower.includes("project") || lower.includes("work")) {
-        reply = "Smit has built impressive projects including Peblo AI Notes Workspace, a Full Stack Job Portal, AcademyPro E-Learning Landing Page, ShopVault E-Commerce Dashboard, and the live Sharda Steel Business site!";
-      } else if (lower.includes("contact") || lower.includes("email") || lower.includes("hire") || lower.includes("phone")) {
-        reply = "You can reach Smit directly at sp7202037271@gmail.com or call him at +91 72020 37271. His LinkedIn is linkedin.com/in/patelsmit09.";
-      } else if (lower.includes("education") || lower.includes("college") || lower.includes("cgpa")) {
-        reply = "Smit is pursuing his B.Tech in Information Technology at Silver Oak University, Ahmedabad (2022-2026) with a CGPA of 8.14/10.";
-      }
-      return res.json({ reply, fallback: true });
+    const reply = await generateGeminiReply(message.trim(), history);
+    if (reply) {
+      return res.json({ reply });
     }
 
-    // Format prompt with context
-    const fullPrompt = `${RESUME_CONTEXT}\n\nUser Question: ${message}\nProvide a concise, direct, and helpful answer:`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: fullPrompt,
+    return res.json({
+      reply: getPortfolioFallbackReply(message),
+      fallback: true,
     });
-
-    const reply = response.text || "I'm sorry, I couldn't process that response right now.";
-    return res.json({ reply });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Gemini API Error:", error);
-    
-    // Intelligent fallback generator based on question intent
-    const message = req.body?.message || "";
-    const lower = message.toLowerCase();
-    let reply = "";
-
-    if (lower.includes("gemini") || lower.includes("ai")) {
-      reply = "Smit Patel has specialized experience with Google Gemini AI API, building applications like Peblo AI Notes Workspace featuring AI auto-summarization, semantic search, prompt engineering, and Markdown processing.";
-    } else if (lower.includes("job") || lower.includes("portal") || lower.includes("recruitment")) {
-      reply = "Smit built a Full Stack Job Portal using MongoDB, Express.js, React.js, and Node.js. It features Role-Based Access Control (RBAC for Admin/Employer/Job Seeker), Cloudinary resume uploads, applicant tracking, and live deployment on Netlify and Render.";
-    } else if (lower.includes("skill") || lower.includes("tech") || lower.includes("stack") || lower.includes("react") || lower.includes("node")) {
-      reply = "Smit's technical stack includes Frontend (React.js, Next.js 14, TypeScript, Tailwind CSS, Framer Motion), Backend (Node.js, Express.js, REST APIs, JWT Auth, RBAC), Databases (MongoDB, PostgreSQL, Prisma ORM), and AI (Google Gemini API).";
-    } else if (lower.includes("project") || lower.includes("github") || lower.includes("work")) {
-      reply = "Smit has built impressive web projects including Accredian Enterprise Clone, Real-Time Socket.IO Kanban Board, Movie Finder (Next.js 15 & TMDB API), ProWeather Live, Advanced To-Do App, Peblo AI Workspace, Full Stack Job Portal, AcademyPro E-Learning, ShopVault, and Sharda Steel. Check them all out on his GitHub: https://github.com/smitpatel7202!";
-    } else if (lower.includes("education") || lower.includes("college") || lower.includes("cgpa") || lower.includes("degree") || lower.includes("university")) {
-      reply = "Smit is pursuing his B.Tech in Information Technology at Silver Oak University, Ahmedabad (2022-2026) with an impressive CGPA of 8.14 out of 10.";
-    } else if (lower.includes("certif") || lower.includes("ibm") || lower.includes("course")) {
-      reply = "Smit holds 4 professional certifications: AI Fundamentals (IBM SkillsBuild, 2025), Data Analytics (CSRBOX × IBM SkillsBuild, 2025), Data Analysis with Python (IBM SkillsBuild, 2024), and Web Scraping with Python (Great Learning Academy, 2024).";
-    } else if (lower.includes("contact") || lower.includes("email") || lower.includes("phone") || lower.includes("reach") || lower.includes("hire")) {
-      reply = "You can reach Smit directly via email at sp7202037271@gmail.com or by phone/WhatsApp at +91 72020 37271. He is open for full-time roles and freelance projects!";
-    } else {
-      reply = `Smit Patel is a Full Stack Web Developer (MERN Stack & AI) based in Ahmedabad, Gujarat. He holds an 8.14 CGPA in B.Tech IT from Silver Oak University. You can contact him at sp7202037271@gmail.com or check his GitHub at github.com/smitpatel7202. What specific details would you like to know about his projects or skills?`;
-    }
-
-    return res.json({ reply, fallback: true });
+    const message = typeof req.body?.message === "string" ? req.body.message : "";
+    return res.json({
+      reply: getPortfolioFallbackReply(message),
+      fallback: true,
+    });
   }
 });
 
-// Start Server with Vite Middleware
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -141,7 +148,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

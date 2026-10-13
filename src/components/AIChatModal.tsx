@@ -2,15 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChatMessage } from '../types';
 import { soundManager } from '../utils/audio';
+import { getPortfolioFallbackReply } from '../utils/portfolioAssistant';
 import {
   X,
   Bot,
   Send,
-  User,
-  Sparkles,
   Loader2,
-  RefreshCw,
-  Terminal,
   Copy,
   Check
 } from 'lucide-react';
@@ -20,30 +17,66 @@ interface AIChatModalProps {
   onClose: () => void;
 }
 
-export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      sender: 'ai',
-      text: "Hello! I am Smit Patel's AI Resume Representative. Ask me anything about Smit's MERN stack experience, Gemini AI integrations, B.Tech IT degree, or project architecture!",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const WELCOME_MESSAGE: ChatMessage = {
+  id: 'welcome',
+  sender: 'ai',
+  text: "Hello! I am Smit Patel's AI Resume Representative. Ask me anything about Smit's MERN stack experience, Gemini AI integrations, B.Tech IT degree completed in 2026, or project architecture!",
+  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+};
+
+async function requestAiReply(query: string, history: ChatMessage[]) {
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: query,
+        history: history.map(({ sender, text }) => ({ sender, text })),
+      }),
+    });
+
+    const raw = await res.text();
+    if (!raw) {
+      throw new Error('Empty chat response');
     }
-  ]);
+
+    const data = JSON.parse(raw);
+    if (typeof data.reply === 'string' && data.reply.trim()) {
+      return data.reply.trim();
+    }
+
+    throw new Error('Missing chat reply');
+  } catch {
+    return getPortfolioFallbackReply(query);
+  }
+}
+
+export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pinMessageId, setPinMessageId] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
-    }
-  }, [messages, isOpen]);
+    if (!isOpen || !pinMessageId) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const pinIndex = messages.findIndex((msg) => msg.id === pinMessageId);
+    const answer = pinIndex >= 0 ? messages[pinIndex + 1] : undefined;
+    const targetId = answer?.sender === 'ai' ? answer.id : pinMessageId;
+    const target = container.querySelector(`[data-message-id="${targetId}"]`) as HTMLElement | null;
+    if (!target) return;
+
+    container.scrollTo({
+      top: Math.max(0, target.offsetTop - 12),
+      behavior: 'smooth',
+    });
+  }, [messages, isLoading, isOpen, pinMessageId]);
 
   if (!isOpen) return null;
 
@@ -67,36 +100,24 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const conversation = [...messages, userMsg];
+    setMessages(conversation);
+    setPinMessageId(userMsg.id);
     if (!textToSend) setInput('');
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg.text, history: messages })
-      });
-
-      const data = await res.json();
+      const reply = await requestAiReply(userMsg.text, conversation);
       soundManager.playChime();
 
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: data.reply || "I'm sorry, I couldn't process your request right now.",
+        text: reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setMessages((prev) => [...prev, aiMsg]);
-    } catch (err) {
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: "Smit is skilled in MERN stack, PostgreSQL, Next.js, and Google Gemini AI integration. You can contact him directly at sp7202037271@gmail.com!",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
@@ -148,10 +169,11 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 font-sans text-xs sm:text-sm">
+          <div ref={messagesContainerRef} className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 font-sans text-xs sm:text-sm">
             {messages.map((msg) => (
               <div
                 key={msg.id}
+                data-message-id={msg.id}
                 className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.sender === 'ai' && (
@@ -161,14 +183,13 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
                 )}
 
                 <div
-                  className={`relative max-w-[85%] p-4 rounded-2xl space-y-1 shadow-md ${
-                    msg.sender === 'user'
+                  className={`relative max-w-[85%] p-4 rounded-2xl space-y-1 shadow-md ${msg.sender === 'user'
                       ? 'bg-[#E5E5E1] text-[#0A0A0A] font-medium rounded-tr-none'
                       : 'bg-[#050505] border border-[#1A1A1A] text-[#E5E5E1] rounded-tl-none'
-                  }`}
+                    }`}
                 >
                   <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                  
+
                   <div className={`flex items-center justify-between text-[10px] pt-1 ${msg.sender === 'user' ? 'text-[#333]' : 'text-[#666] font-mono'}`}>
                     <span>{msg.timestamp}</span>
                     {msg.sender === 'ai' && (
@@ -202,8 +223,6 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
                 </div>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Preset Question Chips */}

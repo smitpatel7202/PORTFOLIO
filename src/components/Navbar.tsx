@@ -61,11 +61,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
-        isScrolled
+      className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${isScrolled
           ? 'bg-[#0A0A0A]/90 backdrop-blur-md border-b border-[#1A1A1A] py-3.5'
           : 'bg-transparent py-5'
-      }`}
+        }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Editorial Brand Logo */}
@@ -100,11 +99,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 key={link.id}
                 onClick={() => handleNavClick(link.id)}
                 onMouseEnter={() => soundManager.playHover()}
-                className={`relative px-4 py-1.5 text-[11px] font-mono uppercase tracking-[0.2em] rounded-full transition-all cursor-pointer ${
-                  isActive
+                className={`relative px-4 py-1.5 text-[11px] font-mono uppercase tracking-[0.2em] rounded-full transition-all cursor-pointer ${isActive
                     ? 'text-white font-bold'
                     : 'text-[#888] hover:text-white'
-                }`}
+                  }`}
               >
                 {isActive && (
                   <motion.div
@@ -190,11 +188,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={link.id}
                   onClick={() => handleNavClick(link.id)}
-                  className={`text-left px-4 py-3 rounded-xl font-mono text-xs uppercase tracking-[0.2em] transition-all ${
-                    activeSection === link.id
+                  className={`text-left px-4 py-3 rounded-xl font-mono text-xs uppercase tracking-[0.2em] transition-all ${activeSection === link.id
                       ? 'bg-[#1A1A1A] text-white font-bold border border-[#333]'
                       : 'text-[#888] hover:bg-[#121212]'
-                  }`}
+                    }`}
                 >
                   {link.label}
                 </button>

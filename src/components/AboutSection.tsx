@@ -75,7 +75,7 @@ export const AboutSection: React.FC = () => {
             About <span className="font-editorial-serif italic text-white">Smit Patel</span>
           </h2>
           <p className="text-[#888] text-xs sm:text-sm max-w-xl mx-auto">
-            B.Tech Information Technology student & Full Stack Web Developer passionate about building high-performance, AI-augmented digital experiences.
+            B.Tech Information Technology graduate (completed 2026) & Full Stack Web Developer passionate about building high-performance, AI-augmented digital experiences.
           </p>
 
           {/* Editorial Tab Switcher */}
@@ -264,9 +264,9 @@ export const AboutSection: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-base font-bold text-[#E5E5E1]">{edu.degree}</h3>
-                          {edu.current && (
+                          {edu.degree.includes('B.Tech') && (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-mono uppercase tracking-wider">
-                              CURRENT
+                              COMPLETED 2026
                             </span>
                           )}
                         </div>

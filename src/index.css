@@ -2,8 +2,13 @@
 
 @layer utilities {
   @keyframes marquee {
-    0% { transform: translateX(0%); }
-    100% { transform: translateX(-50%); }
+    0% {
+      transform: translateX(0%);
+    }
+
+    100% {
+      transform: translateX(-50%);
+    }
   }
 
   .animate-marquee {
@@ -62,15 +67,16 @@ body {
     margin: 1.2cm;
     size: A4 portrait;
   }
-  
-  html, body {
+
+  html,
+  body {
     background: #ffffff !important;
     color: #000000 !important;
     height: auto !important;
     overflow: visible !important;
   }
 
-  body > * {
+  body>* {
     display: none !important;
   }
 
@@ -102,4 +108,3 @@ body {
     color: #000000 !important;
   }
 }
-

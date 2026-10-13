@@ -336,9 +336,9 @@ export const EDUCATION: EducationItem[] = [
     location: "Ahmedabad, Gujarat",
     duration: "2022 – 2026",
     grade: "CGPA: 8.14 / 10",
-    current: true,
+    current: false,
     highlights: [
-      "Specializing in Full Stack Web Engineering, Data Structures, Database Systems & AI Software.",
+      "Completed B.Tech in Information Technology in 2026 with a focus on Full Stack Web Engineering, Data Structures, Database Systems & AI Software.",
       "Maintained a strong 8.14 CGPA across 8 semesters with active technical leadership.",
       "Built multiple real-world MERN and AI web applications as part of university software labs."
     ]
